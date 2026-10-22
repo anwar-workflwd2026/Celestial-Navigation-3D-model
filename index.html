@@ -1,0 +1,1122 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>3D Celestial Navigation & PZX Simulator</title>
+  <style>
+    :root {
+      --bg: #04070f;
+      --panel: rgba(15, 23, 42, 0.94);
+      --border: #334155;
+      --accent: #38bdf8;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; user-select: none; }
+    body, html {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+      touch-action: none;
+    }
+    #canvas-container { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+
+    /* Top Telemetry & Concept Banner */
+    #top-bar {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: space-between;
+      pointer-events: none;
+      z-index: 15;
+    }
+    .telemetry-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 14px;
+      backdrop-filter: blur(10px);
+      pointer-events: auto;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 0.8rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      align-items: center;
+    }
+    .t-item { display: flex; align-items: center; gap: 6px; }
+    .t-val { font-weight: 700; color: #fff; font-size: 0.85rem; }
+    .status-badge {
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+    .status-visible { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; }
+    .status-below { background: rgba(244, 63, 94, 0.25); color: #fda4af; border: 1px solid #f43f5e; }
+
+    #concept-banner {
+      background: rgba(15, 23, 42, 0.92);
+      border-left: 4px solid #38bdf8;
+      border-top: 1px solid var(--border);
+      border-right: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      font-size: 0.82rem;
+      max-width: 520px;
+      line-height: 1.4;
+      color: #f1f5f9;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+      pointer-events: auto;
+    }
+    #concept-banner strong { color: #38bdf8; }
+
+    /* Control Drawer */
+    #drawer {
+      position: absolute;
+      top: 74px;
+      left: 12px;
+      width: 390px;
+      max-height: calc(100vh - 88px);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 14px;
+      overflow-y: auto;
+      z-index: 20;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 12px 32px rgba(0,0,0,0.7);
+      transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      touch-action: pan-y;
+    }
+    #drawer.collapsed {
+      transform: translateX(-415px);
+    }
+    #drawer-toggle-fab {
+      position: absolute;
+      top: 74px;
+      left: 12px;
+      z-index: 18;
+      background: #0284c7;
+      color: #fff;
+      border: 1px solid #38bdf8;
+      border-radius: 8px;
+      padding: 9px 14px;
+      font-size: 0.82rem;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    }
+
+    /* Quick Bottom On-Screen Hint */
+    #interaction-hint {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 0.74rem;
+      color: var(--muted);
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    @media (max-width: 768px) {
+      #concept-banner, #interaction-hint { display: none; }
+      #drawer {
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-height: 56vh;
+        border-radius: 16px 16px 0 0;
+      }
+      #drawer.collapsed {
+        transform: translateY(calc(100% - 48px));
+      }
+      #drawer-toggle-fab { display: none; }
+    }
+
+    .drawer-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 10px;
+      margin-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .drawer-header h2 { font-size: 0.98rem; font-weight: 700; color: #fff; }
+    .header-actions { display: flex; gap: 6px; }
+
+    .btn-sm {
+      background: #1e293b;
+      color: var(--text);
+      border: 1px solid #475569;
+      border-radius: 6px;
+      padding: 6px 9px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-sm:hover { background: #334155; border-color: #64748b; }
+    .btn-sm.active {
+      background: #0284c7;
+      border-color: #38bdf8;
+      color: #fff;
+    }
+    .btn-reset {
+      background: rgba(244, 63, 94, 0.15);
+      border-color: #f43f5e;
+      color: #fda4af;
+    }
+    .btn-reset:hover { background: rgba(244, 63, 94, 0.3); }
+
+    .section-label {
+      font-size: 0.71rem;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin: 12px 0 6px 0;
+      font-weight: 700;
+    }
+    .preset-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 6px;
+    }
+    .cam-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 5px;
+    }
+
+    /* Enhanced Parameter Sliders with Step Buttons */
+    .control-group {
+      background: rgba(30, 41, 59, 0.45);
+      border: 1px solid rgba(51, 65, 85, 0.7);
+      border-radius: 8px;
+      padding: 7px 10px;
+      margin-bottom: 7px;
+    }
+    .control-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.78rem;
+      margin-bottom: 4px;
+    }
+    .val-badge {
+      font-family: ui-monospace, monospace;
+      font-weight: 700;
+      color: #38bdf8;
+      font-size: 0.82rem;
+    }
+    .slider-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .step-btn {
+      background: #0f172a;
+      color: #cbd5e1;
+      border: 1px solid #475569;
+      border-radius: 4px;
+      width: 26px;
+      height: 24px;
+      font-weight: 700;
+      font-size: 0.85rem;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .step-btn:hover { background: #334155; color: #fff; }
+    input[type="range"] { flex: 1; height: 20px; accent-color: var(--accent); cursor: pointer; }
+    .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 7px 10px;
+      font-size: 0.78rem;
+      margin-top: 6px;
+      background: rgba(30, 41, 59, 0.35);
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(51, 65, 85, 0.5);
+    }
+    .checkbox-grid label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+    .checkbox-grid input { accent-color: var(--accent); width: 15px; height: 15px; cursor: pointer; }
+
+    .mnemonic-box {
+      margin-top: 10px;
+      padding: 8px 10px;
+      background: rgba(15, 23, 42, 0.85);
+      border-left: 3px solid #facc15;
+      border-radius: 4px;
+      font-size: 0.74rem;
+      line-height: 1.45;
+      color: #cbd5e1;
+    }
+
+    .label-3d {
+      position: absolute;
+      pointer-events: none;
+      font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 4px;
+      background: rgba(15, 23, 42, 0.92);
+      border: 1px solid rgba(255,255,255,0.25);
+      transform: translate(-50%, -50%);
+      white-space: nowrap;
+      z-index: 5;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.6);
+      transition: opacity 0.15s;
+    }
+    .label-cardinal {
+      font-size: 10px;
+      padding: 1px 5px;
+      background: rgba(6, 78, 59, 0.9);
+      color: #6ee7b7;
+      border: 1px solid #10b981;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+<div id="canvas-container"></div>
+<div id="labels-container"></div>
+
+<div id="top-bar">
+  <div class="telemetry-card">
+    <div class="t-item" style="color:#fbbf24;">GHA★: <span id="out-gha-star" class="t-val">110.0°</span></div>
+    <div class="t-item" style="color:#e2e8f0;">LHA: <span id="out-lha" class="t-val">080.0°</span></div>
+    <div class="t-item" style="color:#93c5fd;">Co-Lat (PZ): <span id="out-pz" class="t-val">40.0°</span></div>
+    <div class="t-item" style="color:#fda4af;">Polar Dist (PX): <span id="out-px" class="t-val">70.0°</span></div>
+    <div class="t-item" style="color:#fde047;">Zenith Dist (ZX): <span id="out-zx" class="t-val">67.4°</span></div>
+    <div class="t-item" style="color:#4ade80;">True Alt (Hc): <span id="out-hc" class="t-val">22.6°</span></div>
+    <div class="t-item" style="color:#c084fc;">Azimuth (Zn): <span id="out-az" class="t-val">259.6° T</span></div>
+    <div class="t-item" style="color:#38bdf8;">GP: <span id="out-gp" class="t-val">20.0°N, 110.0°W</span></div>
+    <span id="out-status" class="status-badge status-visible">Above Horizon</span>
+  </div>
+  <div id="concept-banner">
+    <strong>Full 3D Celestial Sphere &amp; PZX Triangle:</strong> Shaded gold surface highlights the spherical PZX triangle. Use the <em>Camera Viewpoints</em> or <em>Lesson Presets</em> on the left to inspect individual angles.
+  </div>
+</div>
+
+<button id="drawer-toggle-fab" onclick="toggleDrawer()">☰ Open Controls</button>
+
+<div id="drawer">
+  <div class="drawer-header">
+    <h2 onclick="toggleDrawer()" style="cursor:pointer;">🧭 Celestial Nav 3D Lab</h2>
+    <div class="header-actions">
+      <button class="btn-sm btn-reset" onclick="resetDefaults()" title="Reset all values to default">↺ Reset</button>
+      <button class="btn-sm" id="btn-collapse" onclick="toggleDrawer()">Hide ▲</button>
+    </div>
+  </div>
+
+  <div class="section-label">1. Lesson Concept Presets</div>
+  <div class="preset-grid">
+    <button class="btn-sm active" id="pre-all" onclick="applyPreset('all')">Full PZX &amp; Sphere</button>
+    <button class="btn-sm" id="pre-dec" onclick="applyPreset('dec')">1: Dec &amp; Polar Dist</button>
+    <button class="btn-sm" id="pre-ecl" onclick="applyPreset('ecl')">2: Ecliptic &amp; Aries</button>
+    <button class="btn-sm" id="pre-ha" onclick="applyPreset('ha')">3: GHA, SHA &amp; LHA</button>
+    <button class="btn-sm" id="pre-hor" onclick="applyPreset('hor')">4: Horizon &amp; Alt</button>
+    <button class="btn-sm" id="btn-anim" onclick="toggleDiurnal()">▶ 24h Earth Rotation</button>
+  </div>
+
+  <div class="section-label">2. Camera Viewpoints</div>
+  <div class="cam-grid">
+    <button class="btn-sm" onclick="setCameraView('3d')">3D Orbit</button>
+    <button class="btn-sm" onclick="setCameraView('polar')">Polar (Pn)</button>
+    <button class="btn-sm" onclick="setCameraView('eq')">Equatorial</button>
+    <button class="btn-sm" onclick="setCameraView('zenith')">Zenith (Z)</button>
+  </div>
+
+  <div class="section-label">3. Navigational Parameters (0.5° Fine Step)</div>
+
+  <div class="control-group">
+    <div class="control-header">
+      <span><span class="dot" style="background:#3b82f6;"></span>Observer Latitude (&phi;)</span>
+      <span id="val-lat" class="val-badge">50.0° N</span>
+    </div>
+    <div class="slider-row">
+      <button class="step-btn" onclick="stepSlider('slider-lat', -0.5)">−</button>
+      <input type="range" id="slider-lat" min="-65" max="75" step="0.5" value="50">
+      <button class="step-btn" onclick="stepSlider('slider-lat', 0.5)">+</button>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <div class="control-header">
+      <span><span class="dot" style="background:#93c5fd;"></span>Observer Longitude (&lambda;)</span>
+      <span id="val-lon" class="val-badge">030.0° W</span>
+    </div>
+    <div class="slider-row">
+      <button class="step-btn" onclick="stepSlider('slider-lon', -0.5)">−</button>
+      <input type="range" id="slider-lon" min="-180" max="180" step="0.5" value="-30">
+      <button class="step-btn" onclick="stepSlider('slider-lon', 0.5)">+</button>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <div class="control-header">
+      <span><span class="dot" style="background:#22c55e;"></span>GHA Aries (GHA &Upsilon;)</span>
+      <span id="val-gha-aries" class="val-badge">045.0° W</span>
+    </div>
+    <div class="slider-row">
+      <button class="step-btn" onclick="stepSlider('slider-gha-aries', -0.5)">−</button>
+      <input type="range" id="slider-gha-aries" min="0" max="360" step="0.5" value="45">
+      <button class="step-btn" onclick="stepSlider('slider-gha-aries', 0.5)">+</button>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <div class="control-header">
+      <span><span class="dot" style="background:#06b6d4;"></span>Sidereal Hour Angle (SHA ★)</span>
+      <span id="val-sha" class="val-badge">065.0° W</span>
+    </div>
+    <div class="slider-row">
+      <button class="step-btn" onclick="stepSlider('slider-sha', -0.5)">−</button>
+      <input type="range" id="slider-sha" min="0" max="360" step="0.5" value="65">
+      <button class="step-btn" onclick="stepSlider('slider-sha', 0.5)">+</button>
+    </div>
+  </div>
+
+  <div class="control-group">
+    <div class="control-header">
+      <span><span class="dot" style="background:#f43f5e;"></span>Star Declination (d)</span>
+      <span id="val-dec" class="val-badge">20.0° N</span>
+    </div>
+    <div class="slider-row">
+      <button class="step-btn" onclick="stepSlider('slider-dec', -0.5)">−</button>
+      <input type="range" id="slider-dec" min="-60" max="65" step="0.5" value="20">
+      <button class="step-btn" onclick="stepSlider('slider-dec', 0.5)">+</button>
+    </div>
+  </div>
+
+  <div class="section-label">4. Visual Layers</div>
+  <div class="checkbox-grid">
+    <label><input type="checkbox" id="chk-pzx" checked> PZX Triangle &amp; Mesh</label>
+    <label><input type="checkbox" id="chk-pardec" checked> Parallel of Dec</label>
+    <label><input type="checkbox" id="chk-ecliptic" checked> Ecliptic (23.5°)</label>
+    <label><input type="checkbox" id="chk-horizon" checked> Horizon &amp; Cardinals</label>
+    <label><input type="checkbox" id="chk-ha" checked> GHA / SHA / LHA</label>
+    <label><input type="checkbox" id="chk-gp" checked> Body GP &amp; Ray</label>
+  </div>
+
+  <div class="mnemonic-box">
+    <strong>GHA★ = GHA&Upsilon; + SHA★</strong><br>
+    <em>“Longitude West, Greenwich is Best; Longitude East, Greenwich is Least”</em><br>
+    LHA = GHA★ &minus; Long(W) &nbsp;|&nbsp; LHA = GHA★ + Long(E)
+  </div>
+</div>
+
+<div id="interaction-hint">🖱️ Left-drag: Rotate &nbsp;|&nbsp; Scroll/Pinch: Zoom &nbsp;|&nbsp; Right-drag: Pan</div>
+
+<script>
+  function toggleDrawer() {
+    const drawer = document.getElementById('drawer');
+    const btn = document.getElementById('btn-collapse');
+    drawer.classList.toggle('collapsed');
+    btn.textContent = drawer.classList.contains('collapsed') ? 'Expand ▼' : 'Hide ▲';
+  }
+
+  function stepSlider(id, delta) {
+    const el = document.getElementById(id);
+    const min = parseFloat(el.min);
+    const max = parseFloat(el.max);
+    let val = parseFloat(el.value) + delta;
+    if (id === 'slider-gha-aries' || id === 'slider-sha') {
+      val = ((val % 360) + 360) % 360;
+    } else {
+      val = Math.max(min, Math.min(max, val));
+    }
+    el.value = val;
+    updateModel();
+  }
+
+  function resetDefaults() {
+    if (isAnimatingDiurnal) toggleDiurnal();
+    document.getElementById('slider-lat').value = 50;
+    document.getElementById('slider-lon').value = -30;
+    document.getElementById('slider-gha-aries').value = 45;
+    document.getElementById('slider-sha').value = 65;
+    document.getElementById('slider-dec').value = 20;
+    applyPreset('all');
+  }
+
+  const container = document.getElementById('canvas-container');
+  const labelsContainer = document.getElementById('labels-container');
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 200);
+  camera.position.set(6.8, 4.6, 7.2);
+
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  container.appendChild(renderer.domElement);
+
+  const controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.06;
+  controls.minDistance = 3.2;
+  controls.maxDistance = 22;
+
+  scene.add(new THREE.AmbientLight(0xdbeafe, 0.8));
+  const sunLight = new THREE.DirectionalLight(0xffffff, 0.9);
+  sunLight.position.set(12, 18, 10);
+  scene.add(sunLight);
+
+  const R_EARTH = 1.15;
+  const R_CEL = 3.3;
+  const DEG2RAD = Math.PI / 180;
+
+  // Starfield
+  const starGeo = new THREE.BufferGeometry();
+  const starVerts = [];
+  for (let i = 0; i < 1000; i++) {
+    const r = 45 + Math.random() * 30;
+    const theta = Math.random() * Math.PI * 2;
+    const phi = Math.acos(2 * Math.random() - 1);
+    starVerts.push(r * Math.sin(phi) * Math.cos(theta), r * Math.cos(phi), r * Math.sin(phi) * Math.sin(theta));
+  }
+  starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starVerts, 3));
+  scene.add(new THREE.Points(starGeo, new THREE.PointsMaterial({ color: 0x64748b, size: 0.16 })));
+
+  function createEarthTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 512;
+    const ctx = canvas.getContext('2d');
+
+    const grad = ctx.createLinearGradient(0, 0, 0, 512);
+    grad.addColorStop(0, '#0f2942');
+    grad.addColorStop(0.5, '#1d4ed8');
+    grad.addColorStop(1, '#0f2942');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 1024, 512);
+
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= 1024; x += 1024 / 12) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 512); ctx.stroke();
+    }
+    for (let y = 0; y <= 512; y += 512 / 6) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(1024, y); ctx.stroke();
+    }
+
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.45)';
+    ctx.strokeStyle = 'rgba(74, 222, 128, 0.75)';
+    ctx.lineWidth = 2;
+
+    function drawPoly(coords) {
+      ctx.beginPath();
+      coords.forEach(([lon, lat], idx) => {
+        const u = ((lon + 180) % 360) / 360 * 1024;
+        const v = (90 - lat) / 180 * 512;
+        if (idx === 0) ctx.moveTo(u, v); else ctx.lineTo(u, v);
+      });
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    drawPoly([[-10, 36], [30, 38], [40, 65], [-5, 60]]);
+    drawPoly([[-8, 50], [2, 51], [-3, 59], [-8, 55]]);
+    drawPoly([[-17, 15], [-10, 35], [35, 30], [50, 10], [35, -34], [15, -34], [8, 4]]);
+    drawPoly([[35, 30], [140, 65], [145, 35], [105, 10], [75, 8], [55, 22]]);
+    drawPoly([[115, -15], [152, -15], [150, -38], [115, -34]]);
+    drawPoly([[-160, 68], [-60, 60], [-75, 25], [-100, 18], [-125, 48]]);
+    drawPoly([[-80, 10], [-35, -6], [-55, -35], [-70, -52], [-75, -15]]);
+
+    return new THREE.CanvasTexture(canvas);
+  }
+
+  function sphToVec3(radius, latDeg, westAngleDeg) {
+    const phi = latDeg * DEG2RAD;
+    const theta = westAngleDeg * DEG2RAD;
+    return new THREE.Vector3(
+      radius * Math.cos(phi) * Math.cos(theta),
+      radius * Math.sin(phi),
+      radius * Math.cos(phi) * Math.sin(theta)
+    );
+  }
+
+  function createArcLine(points, color, dashed = false, opacity = 1.0) {
+    const geom = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = dashed
+      ? new THREE.LineDashedMaterial({ color, dashSize: 0.11, gapSize: 0.06, transparent: opacity < 1, opacity })
+      : new THREE.LineBasicMaterial({ color, transparent: opacity < 1, opacity });
+    const line = new THREE.Line(geom, mat);
+    if (dashed) line.computeLineDistances();
+    return line;
+  }
+
+  function getEquatorialArc(radius, startWestDeg, sweepWestDeg, yOffset = 0) {
+    const pts = [];
+    const steps = Math.max(20, Math.ceil(Math.abs(sweepWestDeg) / 2));
+    for (let i = 0; i <= steps; i++) {
+      const v = sphToVec3(radius, 0, startWestDeg + (sweepWestDeg * i) / steps);
+      v.y += yOffset;
+      pts.push(v);
+    }
+    return pts;
+  }
+
+  function getSmallCircleLat(radius, latDeg) {
+    const pts = [];
+    for (let i = 0; i <= 90; i++) {
+      pts.push(sphToVec3(radius, latDeg, i * 4));
+    }
+    return pts;
+  }
+
+  function getMeridianArc(radius, westAngleDeg, startLatDeg, endLatDeg) {
+    const pts = [];
+    const steps = Math.max(18, Math.ceil(Math.abs(endLatDeg - startLatDeg) / 2));
+    for (let i = 0; i <= steps; i++) {
+      pts.push(sphToVec3(radius, startLatDeg + ((endLatDeg - startLatDeg) * i) / steps, westAngleDeg));
+    }
+    return pts;
+  }
+
+  function getGreatCircleArc(vStart, vEnd, radius) {
+    const pts = [];
+    const steps = 48;
+    const u = vStart.clone().normalize();
+    const v = vEnd.clone().normalize();
+    const omega = Math.acos(THREE.MathUtils.clamp(u.dot(v), -1, 1));
+    if (omega < 0.001) return [vStart.clone(), vEnd.clone()];
+    const sinOmega = Math.sin(omega);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      pts.push(new THREE.Vector3()
+        .addScaledVector(u, Math.sin((1 - t) * omega) / sinOmega)
+        .addScaledVector(v, Math.sin(t * omega) / sinOmega)
+        .multiplyScalar(radius));
+    }
+    return pts;
+  }
+
+  // Create Shaded Spherical Triangle Surface Patch for PZX
+  function createSphericalTriangleMesh(vA, vB, vC, radius, color, opacity = 0.18) {
+    const subdiv = 12;
+    const positions = [];
+    const indices = [];
+    const uA = vA.clone().normalize();
+    const uB = vB.clone().normalize();
+    const uC = vC.clone().normalize();
+
+    const grid = [];
+    let idx = 0;
+    for (let i = 0; i <= subdiv; i++) {
+      const row = [];
+      for (let j = 0; j <= subdiv - i; j++) {
+        const k = subdiv - i - j;
+        const p = new THREE.Vector3()
+          .addScaledVector(uA, i / subdiv)
+          .addScaledVector(uB, j / subdiv)
+          .addScaledVector(uC, k / subdiv)
+          .normalize()
+          .multiplyScalar(radius);
+        positions.push(p.x, p.y, p.z);
+        row.push(idx++);
+      }
+      grid.push(row);
+    }
+
+    for (let i = 0; i < subdiv; i++) {
+      for (let j = 0; j < subdiv - i; j++) {
+        indices.push(grid[i][j], grid[i + 1][j], grid[i][j + 1]);
+        if (j < subdiv - i - 1) {
+          indices.push(grid[i + 1][j], grid[i + 1][j + 1], grid[i][j + 1]);
+        }
+      }
+    }
+
+    const geom = new THREE.BufferGeometry();
+    geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geom.setIndex(indices);
+    geom.computeVertexNormals();
+    return new THREE.Mesh(geom, new THREE.MeshBasicMaterial({
+      color,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity,
+      depthWrite: false
+    }));
+  }
+
+  const staticGroup = new THREE.Group();
+  scene.add(staticGroup);
+
+  const earthGroup = new THREE.Group();
+  const earthMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(R_EARTH, 36, 28),
+    new THREE.MeshPhongMaterial({ map: createEarthTexture(), shininess: 15 })
+  );
+  earthMesh.rotation.y = Math.PI;
+  earthGroup.add(earthMesh);
+  earthGroup.add(createArcLine(getEquatorialArc(R_EARTH + 0.01, 0, 360), 0x94a3b8));
+  earthGroup.add(createArcLine(getMeridianArc(R_EARTH + 0.012, 0, -90, 90), 0x22c55e));
+  staticGroup.add(earthGroup);
+
+  staticGroup.add(new THREE.Mesh(
+    new THREE.SphereGeometry(R_CEL, 36, 24),
+    new THREE.MeshBasicMaterial({ color: 0x334155, wireframe: true, transparent: true, opacity: 0.12 })
+  ));
+
+  staticGroup.add(createArcLine(getEquatorialArc(R_CEL, 0, 360), 0xe2e8f0));
+  const eqDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(R_CEL, 64),
+    new THREE.MeshBasicMaterial({ color: 0x38bdf8, side: THREE.DoubleSide, transparent: true, opacity: 0.04, depthWrite: false })
+  );
+  eqDisc.rotation.x = Math.PI / 2;
+  staticGroup.add(eqDisc);
+
+  staticGroup.add(createArcLine([new THREE.Vector3(0, -R_CEL * 1.15, 0), new THREE.Vector3(0, R_CEL * 1.15, 0)], 0x94a3b8, true));
+  staticGroup.add(createArcLine(getMeridianArc(R_CEL, 0, -90, 90), 0x22c55e));
+
+  const dynamicGroup = new THREE.Group();
+  scene.add(dynamicGroup);
+
+  const labelDefs = [
+    { id: 'Pn', text: 'Pn (North Pole)', color: '#f8fafc' },
+    { id: 'Ps', text: 'Ps (South Pole)', color: '#94a3b8' },
+    { id: 'G', text: 'G (Greenwich 0°)', color: '#4ade80' },
+    { id: 'Aries', text: '♈ Aries', color: '#22d3ee' },
+    { id: 'Ecliptic', text: 'Ecliptic (23.5°)', color: '#f59e0b' },
+    { id: 'GHA_Aries', text: 'GHA ♈', color: '#4ade80' },
+    { id: 'SHA', text: 'SHA ★', color: '#22d3ee' },
+    { id: 'GHA_Star', text: 'GHA ★', color: '#fbbf24' },
+    { id: 'LHA', text: 'LHA ★', color: '#e2e8f0' },
+    { id: 'Star', text: '★ Star (X)', color: '#fb7185' },
+    { id: 'GP', text: 'GP (Body)', color: '#fb7185' },
+    { id: 'Dec', text: 'Dec (d)', color: '#fb7185' },
+    { id: 'ParDec', text: 'Parallel of Dec', color: '#f472b6' },
+    { id: 'PX', text: 'Polar Dist (PX)', color: '#fda4af' },
+    { id: 'Zenith', text: 'Zenith (Z)', color: '#facc15' },
+    { id: 'Obs', text: 'Observer (O)', color: '#facc15' },
+    { id: 'Lat', text: 'Lat (φ)', color: '#60a5fa' },
+    { id: 'Lon', text: 'Lon (λ)', color: '#93c5fd' },
+    { id: 'PZ', text: 'Co-Lat (PZ)', color: '#93c5fd' },
+    { id: 'ZX', text: 'Zenith Dist (ZX)', color: '#fde047' },
+    { id: 'Hc', text: 'True Alt (Hc)', color: '#4ade80' },
+    { id: 'CardN', text: 'N', color: '#6ee7b7', cardinal: true },
+    { id: 'CardS', text: 'S', color: '#6ee7b7', cardinal: true },
+    { id: 'CardE', text: 'E', color: '#6ee7b7', cardinal: true },
+    { id: 'CardW', text: 'W', color: '#6ee7b7', cardinal: true }
+  ];
+
+  const labelEls = {}, labelPos = {}, labelVis = {};
+  labelDefs.forEach(d => {
+    const el = document.createElement('div');
+    el.className = d.cardinal ? 'label-3d label-cardinal' : 'label-3d';
+    if (!d.cardinal) {
+      el.style.color = d.color;
+      el.style.borderColor = d.color;
+    }
+    el.textContent = d.text;
+    labelsContainer.appendChild(el);
+    labelEls[d.id] = el;
+    labelPos[d.id] = new THREE.Vector3();
+    labelVis[d.id] = true;
+  });
+
+  function createSphereMarker(pos, color, size = 0.085) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(size, 16, 16), new THREE.MeshBasicMaterial({ color }));
+    m.position.copy(pos);
+    return m;
+  }
+
+  let currentZenithVec = new THREE.Vector3(0, 1, 0);
+
+  function updateModel() {
+    while (dynamicGroup.children.length > 0) {
+      const o = dynamicGroup.children[0];
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+      dynamicGroup.remove(o);
+    }
+
+    const lat = parseFloat(document.getElementById('slider-lat').value);
+    const lon = parseFloat(document.getElementById('slider-lon').value);
+    const ghaAries = parseFloat(document.getElementById('slider-gha-aries').value);
+    const sha = parseFloat(document.getElementById('slider-sha').value);
+    const dec = parseFloat(document.getElementById('slider-dec').value);
+
+    const showPZX = document.getElementById('chk-pzx').checked;
+    const showParDec = document.getElementById('chk-pardec').checked;
+    const showEcliptic = document.getElementById('chk-ecliptic').checked;
+    const showHorizon = document.getElementById('chk-horizon').checked;
+    const showHA = document.getElementById('chk-ha').checked;
+    const showGP = document.getElementById('chk-gp').checked;
+
+    document.getElementById('val-lat').textContent = `${Math.abs(lat).toFixed(1)}° ${lat >= 0 ? 'N' : 'S'}`;
+    document.getElementById('val-lon').textContent = `${Math.abs(lon).toFixed(1).padStart(5, '0')}° ${lon >= 0 ? 'E' : 'W'}`;
+    document.getElementById('val-gha-aries').textContent = `${ghaAries.toFixed(1).padStart(5, '0')}° W`;
+    document.getElementById('val-sha').textContent = `${sha.toFixed(1).padStart(5, '0')}° W`;
+    document.getElementById('val-dec').textContent = `${Math.abs(dec).toFixed(1)}° ${dec >= 0 ? 'N' : 'S'}`;
+
+    const ghaStar = (ghaAries + sha) % 360;
+    const obsWest = -lon;
+    const lha = ((ghaStar + lon) % 360 + 360) % 360;
+
+    const isNorthElevated = lat >= 0;
+    const polarDist = isNorthElevated ? (90 - dec) : (90 + dec);
+    const coLat = 90 - Math.abs(lat);
+
+    const sinHc = Math.sin(lat * DEG2RAD) * Math.sin(dec * DEG2RAD) +
+                  Math.cos(lat * DEG2RAD) * Math.cos(dec * DEG2RAD) * Math.cos(lha * DEG2RAD);
+    const hcRad = Math.asin(THREE.MathUtils.clamp(sinHc, -1, 1));
+    const hcDeg = hcRad / DEG2RAD;
+    const zdDeg = 90 - hcDeg;
+
+    const cosAz = (Math.sin(dec * DEG2RAD) - Math.sin(lat * DEG2RAD) * sinHc) /
+                  (Math.cos(lat * DEG2RAD) * Math.cos(hcRad) + 1e-7);
+    let azDeg = Math.acos(THREE.MathUtils.clamp(cosAz, -1, 1)) / DEG2RAD;
+    if (lha < 180) azDeg = 360 - azDeg;
+
+    const gpLonStr = ghaStar <= 180 ? `${ghaStar.toFixed(1)}°W` : `${(360 - ghaStar).toFixed(1)}°E`;
+
+    document.getElementById('out-gha-star').textContent = `${ghaStar.toFixed(1)}°`;
+    document.getElementById('out-lha').textContent = `${lha.toFixed(1)}°`;
+    document.getElementById('out-pz').textContent = `${coLat.toFixed(1)}°`;
+    document.getElementById('out-px').textContent = `${polarDist.toFixed(1)}°`;
+    document.getElementById('out-zx').textContent = `${zdDeg.toFixed(1)}°`;
+    document.getElementById('out-hc').textContent = `${hcDeg.toFixed(1)}°`;
+    document.getElementById('out-az').textContent = `${azDeg.toFixed(1).padStart(5, '0')}° T`;
+    document.getElementById('out-gp').textContent = `${Math.abs(dec).toFixed(1)}°${dec >= 0 ? 'N' : 'S'}, ${gpLonStr}`;
+
+    const statusBadge = document.getElementById('out-status');
+    if (hcDeg >= 0) {
+      statusBadge.textContent = 'Above Horizon';
+      statusBadge.className = 'status-badge status-visible';
+    } else {
+      statusBadge.textContent = 'Below Horizon';
+      statusBadge.className = 'status-badge status-below';
+    }
+
+    Object.keys(labelVis).forEach(k => labelVis[k] = false);
+
+    const posPn = new THREE.Vector3(0, R_CEL, 0);
+    const posPs = new THREE.Vector3(0, -R_CEL, 0);
+    dynamicGroup.add(createSphereMarker(posPn, 0xffffff, 0.07));
+    dynamicGroup.add(createSphereMarker(posPs, 0x64748b, 0.06));
+    labelPos['Pn'].copy(posPn).add(new THREE.Vector3(0, 0.22, 0)); labelVis['Pn'] = true;
+    labelPos['Ps'].copy(posPs).add(new THREE.Vector3(0, -0.22, 0)); labelVis['Ps'] = true;
+
+    const posG = sphToVec3(R_CEL, 0, 0);
+    dynamicGroup.add(createSphereMarker(posG, 0x22c55e, 0.075));
+    labelPos['G'].copy(posG).multiplyScalar(1.08); labelVis['G'] = true;
+
+    dynamicGroup.add(createArcLine(getMeridianArc(R_CEL, ghaAries, -90, 90), 0x06b6d4));
+    const posAries = sphToVec3(R_CEL, 0, ghaAries);
+    dynamicGroup.add(createSphereMarker(posAries, 0x06b6d4, 0.085));
+    labelPos['Aries'].copy(posAries).multiplyScalar(1.09); labelVis['Aries'] = true;
+
+    if (showEcliptic) {
+      const eclPts = [];
+      const obliq = 23.45 * DEG2RAD;
+      for (let i = 0; i <= 90; i++) {
+        const a = (i * 4) * DEG2RAD;
+        const latE = Math.asin(Math.sin(obliq) * Math.sin(a)) / DEG2RAD;
+        const lonOffset = Math.atan2(Math.cos(obliq) * Math.sin(a), Math.cos(a)) / DEG2RAD;
+        eclPts.push(sphToVec3(R_CEL, latE, ghaAries - lonOffset));
+      }
+      dynamicGroup.add(createArcLine(eclPts, 0xf59e0b, true));
+      labelPos['Ecliptic'].copy(sphToVec3(R_CEL + 0.18, 23.45, ghaAries - 90));
+      labelVis['Ecliptic'] = true;
+    }
+
+    if (showHA) {
+      dynamicGroup.add(createArcLine(getEquatorialArc(R_CEL + 0.03, 0, ghaAries, 0.05), 0x4ade80));
+      labelPos['GHA_Aries'].copy(sphToVec3(R_CEL + 0.22, 0, ghaAries * 0.5)).add(new THREE.Vector3(0, 0.08, 0));
+      labelVis['GHA_Aries'] = ghaAries > 5;
+
+      dynamicGroup.add(createArcLine(getEquatorialArc(R_CEL + 0.03, ghaAries, sha, -0.05), 0x22d3ee));
+      labelPos['SHA'].copy(sphToVec3(R_CEL + 0.22, 0, ghaAries + sha * 0.5)).add(new THREE.Vector3(0, -0.08, 0));
+      labelVis['SHA'] = sha > 5;
+
+      dynamicGroup.add(createArcLine(getEquatorialArc(R_CEL + 0.09, 0, ghaStar, -0.14), 0xfbbf24));
+      labelPos['GHA_Star'].copy(sphToVec3(R_CEL + 0.3, 0, ghaStar * 0.5)).add(new THREE.Vector3(0, -0.2, 0));
+      labelVis['GHA_Star'] = ghaStar > 5;
+
+      dynamicGroup.add(createArcLine(getEquatorialArc(R_CEL + 0.14, obsWest, lha, 0.15), 0xe2e8f0));
+      labelPos['LHA'].copy(sphToVec3(R_CEL + 0.32, 0, obsWest + lha * 0.5)).add(new THREE.Vector3(0, 0.22, 0));
+      labelVis['LHA'] = lha > 5;
+    }
+
+    dynamicGroup.add(createArcLine(getMeridianArc(R_CEL, ghaStar, -90, 90), 0xf43f5e, true, 0.6));
+    dynamicGroup.add(createArcLine(getMeridianArc(R_CEL + 0.03, ghaStar, 0, dec), 0xf43f5e));
+    const posStar = sphToVec3(R_CEL, dec, ghaStar);
+    dynamicGroup.add(createSphereMarker(posStar, 0xf43f5e, 0.11));
+    labelPos['Star'].copy(posStar).multiplyScalar(1.08); labelVis['Star'] = true;
+    labelPos['Dec'].copy(sphToVec3(R_CEL + 0.24, dec * 0.5, ghaStar)); labelVis['Dec'] = Math.abs(dec) > 4;
+
+    if (showParDec) {
+      dynamicGroup.add(createArcLine(getSmallCircleLat(R_CEL, dec), 0xf472b6, true, 0.65));
+      labelPos['ParDec'].copy(sphToVec3(R_CEL + 0.18, dec, ghaStar + 135));
+      labelVis['ParDec'] = true;
+    }
+
+    if (showGP) {
+      const posGP = sphToVec3(R_EARTH, dec, ghaStar);
+      dynamicGroup.add(createSphereMarker(posGP, 0xfb7185, 0.06));
+      dynamicGroup.add(createArcLine([new THREE.Vector3(0, 0, 0), posStar], 0xfb7185, true, 0.8));
+      labelPos['GP'].copy(posGP).multiplyScalar(1.22); labelVis['GP'] = true;
+    }
+
+    const posObs = sphToVec3(R_EARTH, lat, obsWest);
+    const posZenith = sphToVec3(R_CEL, lat, obsWest);
+    currentZenithVec.copy(posZenith).normalize();
+
+    dynamicGroup.add(createSphereMarker(posObs, 0xfacc15, 0.06));
+    dynamicGroup.add(createSphereMarker(posZenith, 0xfacc15, 0.1));
+    dynamicGroup.add(createArcLine([new THREE.Vector3(0, 0, 0), posZenith], 0xfacc15));
+    labelPos['Zenith'].copy(posZenith).multiplyScalar(1.08); labelVis['Zenith'] = true;
+    labelPos['Obs'].copy(posObs).multiplyScalar(1.22); labelVis['Obs'] = true;
+
+    dynamicGroup.add(createArcLine(getMeridianArc(R_CEL, obsWest, -90, 90), 0x3b82f6, true, 0.6));
+    dynamicGroup.add(createArcLine(getMeridianArc(R_CEL + 0.03, obsWest, 0, lat), 0x3b82f6));
+    labelPos['Lat'].copy(sphToVec3(R_CEL + 0.24, lat * 0.5, obsWest)); labelVis['Lat'] = Math.abs(lat) > 4;
+
+    dynamicGroup.add(createArcLine(getEquatorialArc(R_CEL + 0.03, 0, obsWest, 0.09), 0x93c5fd));
+    labelPos['Lon'].copy(sphToVec3(R_CEL + 0.24, 0, obsWest * 0.5)).add(new THREE.Vector3(0, 0.12, 0));
+    labelVis['Lon'] = Math.abs(lon) > 4;
+
+    if (showPZX) {
+      const rTri = R_CEL + 0.04;
+      const elevatedPolePos = isNorthElevated ? new THREE.Vector3(0, rTri, 0) : new THREE.Vector3(0, -rTri, 0);
+      const pZ = sphToVec3(rTri, lat, obsWest);
+      const pX = sphToVec3(rTri, dec, ghaStar);
+
+      // Shaded Spherical PZX Surface
+      dynamicGroup.add(createSphericalTriangleMesh(elevatedPolePos, pZ, pX, R_CEL + 0.015, 0xfacc15, 0.16));
+
+      dynamicGroup.add(createArcLine(getGreatCircleArc(elevatedPolePos, pZ, rTri), 0x93c5fd));
+      dynamicGroup.add(createArcLine(getGreatCircleArc(elevatedPolePos, pX, rTri), 0xfda4af));
+      const zxArc = getGreatCircleArc(pZ, pX, rTri);
+      dynamicGroup.add(createArcLine(zxArc, 0xfde047));
+
+      labelPos['PZ'].copy(sphToVec3(R_CEL + 0.22, isNorthElevated ? (90 + lat) * 0.5 : (-90 + lat) * 0.5, obsWest));
+      labelVis['PZ'] = true;
+      labelPos['PX'].copy(sphToVec3(R_CEL + 0.22, isNorthElevated ? (90 + dec) * 0.5 : (-90 + dec) * 0.5, ghaStar));
+      labelVis['PX'] = true;
+      labelPos['ZX'].copy(zxArc[Math.floor(zxArc.length / 2)].clone().multiplyScalar(1.07));
+      labelVis['ZX'] = true;
+    }
+
+    if (showHorizon) {
+      const normalZ = posZenith.clone().normalize();
+      const horGroup = new THREE.Group();
+      const horDisc = new THREE.Mesh(
+        new THREE.CircleGeometry(R_CEL, 64),
+        new THREE.MeshBasicMaterial({ color: 0x10b981, side: THREE.DoubleSide, transparent: true, opacity: 0.09, depthWrite: false })
+      );
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), normalZ);
+      horDisc.quaternion.copy(q);
+      horGroup.add(horDisc);
+
+      const ringPts = [];
+      for (let i = 0; i <= 64; i++) {
+        const a = (i / 64) * Math.PI * 2;
+        const v = new THREE.Vector3(R_CEL * Math.cos(a), R_CEL * Math.sin(a), 0).applyQuaternion(q);
+        ringPts.push(v);
+      }
+      horGroup.add(createArcLine(ringPts, 0x10b981, false, 0.8));
+      dynamicGroup.add(horGroup);
+
+      // Cardinal Points N, S, E, W on Observer's Rational Horizon
+      const northAxis = new THREE.Vector3(0, 1, 0);
+      let dirN = northAxis.clone().addScaledVector(normalZ, -northAxis.dot(normalZ));
+      if (dirN.lengthSq() < 1e-6) dirN.set(1, 0, 0);
+      dirN.normalize();
+      const dirS = dirN.clone().negate();
+      const dirE = new THREE.Vector3().crossVectors(dirN, normalZ).normalize();
+      const dirW = dirE.clone().negate();
+
+      labelPos['CardN'].copy(dirN.clone().multiplyScalar(R_CEL + 0.18)); labelVis['CardN'] = true;
+      labelPos['CardS'].copy(dirS.clone().multiplyScalar(R_CEL + 0.18)); labelVis['CardS'] = true;
+      labelPos['CardE'].copy(dirE.clone().multiplyScalar(R_CEL + 0.18)); labelVis['CardE'] = true;
+      labelPos['CardW'].copy(dirW.clone().multiplyScalar(R_CEL + 0.18)); labelVis['CardW'] = true;
+
+      // True Altitude (Hc) Arc
+      const uX = posStar.clone().normalize();
+      const uHor = uX.clone().addScaledVector(normalZ, -uX.dot(normalZ)).normalize();
+      const vHorPt = uHor.clone().multiplyScalar(R_CEL + 0.04);
+      const vStarPt = uX.clone().multiplyScalar(R_CEL + 0.04);
+      const hcArc = getGreatCircleArc(vHorPt, vStarPt, R_CEL + 0.04);
+      const hcColor = hcDeg >= 0 ? 0x4ade80 : 0xf43f5e;
+      dynamicGroup.add(createArcLine(hcArc, hcColor, hcDeg < 0));
+      labelPos['Hc'].copy(hcArc[Math.floor(hcArc.length / 2)].clone().multiplyScalar(1.08));
+      labelEls['Hc'].style.color = hcDeg >= 0 ? '#4ade80' : '#fda4af';
+      labelEls['Hc'].textContent = hcDeg >= 0 ? 'True Alt (Hc)' : 'Alt (Below Hor)';
+      labelVis['Hc'] = Math.abs(hcDeg) > 4;
+    }
+  }
+
+  function applyPreset(mode) {
+    document.querySelectorAll('.preset-grid .btn-sm').forEach(b => {
+      if (b.id !== 'btn-anim') b.classList.remove('active');
+    });
+    const banner = document.getElementById('concept-banner');
+
+    if (mode === 'all') {
+      document.getElementById('pre-all').classList.add('active');
+      document.getElementById('chk-pzx').checked = true;
+      document.getElementById('chk-pardec').checked = true;
+      document.getElementById('chk-ecliptic').checked = true;
+      document.getElementById('chk-horizon').checked = true;
+      document.getElementById('chk-ha').checked = true;
+      document.getElementById('chk-gp').checked = true;
+      banner.innerHTML = '<strong>Full 3D Celestial Sphere &amp; PZX Triangle:</strong> Shaded gold surface highlights the spherical PZX triangle alongside terrestrial coordinates and the Rational Horizon.';
+      setCameraView('3d');
+    } else if (mode === 'dec') {
+      document.getElementById('pre-dec').classList.add('active');
+      document.getElementById('chk-pzx').checked = true;
+      document.getElementById('chk-pardec').checked = true;
+      document.getElementById('chk-ecliptic').checked = false;
+      document.getElementById('chk-horizon').checked = false;
+      document.getElementById('chk-ha').checked = false;
+      document.getElementById('chk-gp').checked = true;
+      banner.innerHTML = '<strong>Declination &amp; Polar Distance:</strong> Declination (d) is measured N/S from the Equinoctial. Polar Distance (PX) is the arc from the elevated pole to the star.';
+      setCameraView('eq');
+    } else if (mode === 'ecl') {
+      document.getElementById('pre-ecl').classList.add('active');
+      document.getElementById('chk-pzx').checked = false;
+      document.getElementById('chk-pardec').checked = false;
+      document.getElementById('chk-ecliptic').checked = true;
+      document.getElementById('chk-horizon').checked = false;
+      document.getElementById('chk-ha').checked = false;
+      document.getElementById('chk-gp').checked = false;
+      banner.innerHTML = '<strong>Equinoctial, Ecliptic &amp; First Point of Aries (♈):</strong> The Ecliptic is inclined at 23.5° to the Equinoctial. Their ascending intersection defines Aries (♈).';
+      setCameraView('eq');
+    } else if (mode === 'ha') {
+      document.getElementById('pre-ha').classList.add('active');
+      document.getElementById('chk-pzx').checked = true;
+      document.getElementById('chk-pardec').checked = false;
+      document.getElementById('chk-ecliptic').checked = false;
+      document.getElementById('chk-horizon').checked = false;
+      document.getElementById('chk-ha').checked = true;
+      document.getElementById('chk-gp').checked = false;
+      banner.innerHTML = '<strong>Polar Diagram (GHA, SHA &amp; LHA):</strong> Viewed down on the North Pole (Pn), westward hour angles run clockwise: GHA★ = GHA♈ + SHA★.';
+      setCameraView('polar');
+    } else if (mode === 'hor') {
+      document.getElementById('pre-hor').classList.add('active');
+      document.getElementById('chk-pzx').checked = true;
+      document.getElementById('chk-pardec').checked = false;
+      document.getElementById('chk-ecliptic').checked = false;
+      document.getElementById('chk-horizon').checked = true;
+      document.getElementById('chk-ha').checked = false;
+      document.getElementById('chk-gp').checked = true;
+      banner.innerHTML = '<strong>Rational Horizon, Cardinals &amp; True Altitude:</strong> Green plane shows the Observer’s Rational Horizon (N, S, E, W). True Alt (Hc) + Zenith Dist (ZX) = 90°.';
+      setCameraView('3d');
+    }
+    updateModel();
+  }
+
+  let targetCamPos = null;
+  function setCameraView(view) {
+    if (view === 'polar') {
+      targetCamPos = new THREE.Vector3(0.01, 10.8, 0.01);
+    } else if (view === 'eq') {
+      targetCamPos = new THREE.Vector3(8.2, 0.8, 6.2);
+    } else if (view === 'zenith') {
+      targetCamPos = currentZenithVec.clone().multiplyScalar(10.5);
+    } else {
+      targetCamPos = new THREE.Vector3(6.8, 4.6, 7.2);
+    }
+  }
+
+  let isAnimatingDiurnal = false;
+  function toggleDiurnal() {
+    isAnimatingDiurnal = !isAnimatingDiurnal;
+    const btn = document.getElementById('btn-anim');
+    btn.classList.toggle('active', isAnimatingDiurnal);
+    btn.textContent = isAnimatingDiurnal ? '⏸ Pause Rotation' : '▶ 24h Earth Rotation';
+  }
+
+  ['slider-lat', 'slider-lon', 'slider-gha-aries', 'slider-sha', 'slider-dec',
+   'chk-pzx', 'chk-pardec', 'chk-ecliptic', 'chk-horizon', 'chk-ha', 'chk-gp'].forEach(id => {
+    document.getElementById(id).addEventListener('input', updateModel);
+  });
+
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  updateModel();
+
+  function animate() {
+    requestAnimationFrame(animate);
+
+    if (isAnimatingDiurnal) {
+      const ghaSlider = document.getElementById('slider-gha-aries');
+      let nextVal = (parseFloat(ghaSlider.value) + 0.3) % 360;
+      ghaSlider.value = nextVal;
+      updateModel();
+    }
+
+    if (targetCamPos) {
+      camera.position.lerp(targetCamPos, 0.09);
+      if (camera.position.distanceTo(targetCamPos) < 0.05) targetCamPos = null;
+    }
+
+    controls.update();
+    renderer.render(scene, camera);
+
+    const halfW = window.innerWidth / 2;
+    const halfH = window.innerHeight / 2;
+    const camDir = camera.position.clone().normalize();
+
+    labelDefs.forEach(d => {
+      const el = labelEls[d.id];
+      if (!labelVis[d.id]) {
+        el.style.display = 'none';
+        return;
+      }
+      const worldPos = labelPos[d.id];
+      const proj = worldPos.clone().project(camera);
+      if (proj.z > 1) {
+        el.style.display = 'none';
+        return;
+      }
+      // Dim labels on the far side of the sphere to reduce visual clutter
+      const dot = worldPos.clone().normalize().dot(camDir);
+      el.style.opacity = dot < -0.15 ? '0.28' : '1.0';
+      el.style.display = 'block';
+      el.style.left = `${(proj.x * halfW) + halfW}px`;
+      el.style.top = `${-(proj.y * halfH) + halfH}px`;
+    });
+  }
+  animate();
+</script>
+</body>
+</html>
